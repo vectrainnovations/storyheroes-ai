@@ -1,5 +1,4 @@
 import Link from 'next/link';
-import { Button } from '@/components/ui/button';
 
 export default function Home() {
   return (
@@ -18,15 +17,17 @@ export default function Home() {
           </p>
 
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
-            <Link href="/create">
-              <Button size="lg" className="text-lg px-8 py-6 bg-purple-600 hover:bg-purple-700">
-                Create Your Story
-              </Button>
+            <Link 
+              href="/create"
+              className="inline-block text-lg px-8 py-3 bg-purple-600 hover:bg-purple-700 text-white font-semibold rounded-lg transition-colors"
+            >
+              Create Your Story
             </Link>
-            <Link href="/gallery">
-              <Button size="lg" variant="outline" className="text-lg px-8 py-6">
-                View Examples
-              </Button>
+            <Link 
+              href="/gallery"
+              className="inline-block text-lg px-8 py-3 border-2 border-purple-600 text-purple-600 hover:bg-purple-50 font-semibold rounded-lg transition-colors"
+            >
+              View Examples
             </Link>
           </div>
         </div>
@@ -82,10 +83,11 @@ export default function Home() {
           <p className="text-xl text-purple-100">
             Start creating personalized stories that your child will treasure forever.
           </p>
-          <Link href="/create">
-            <Button size="lg" className="text-lg px-8 py-6 bg-white text-purple-600 hover:bg-gray-100">
-              Get Started Now
-            </Button>
+          <Link 
+            href="/create"
+            className="inline-block text-lg px-8 py-3 bg-white text-purple-600 hover:bg-gray-100 font-semibold rounded-lg transition-colors"
+          >
+            Get Started Now
           </Link>
         </div>
       </section>

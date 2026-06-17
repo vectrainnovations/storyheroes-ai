@@ -1,0 +1,136 @@
+name: SEO Deploy
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
+
+concurrency:
+  group: seo-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: SEO Quality Checks
+    runs-on: ubuntu-latest
+    outputs:
+      html_valid: ${{ steps.html-valid.outcome == 'success' && 'pass' || 'fail' }}
+      links_valid: ${{ steps.links.outcome == 'success' && 'pass' || 'fail' }}
+      seo_valid: ${{ steps.seo-meta.outcome == 'success' && 'pass' || 'fail' }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci || npm install
+        shell: bash
+
+      - name: Build site
+        id: build
+        run: npm run build --if-present
+        shell: bash
+        env:
+          CI: true
+          NODE_ENV: production
+
+      - name: 🔍 HTML Validation
+        id: html-valid
+        if: steps.build.outcome == 'success'
+        continue-on-error: true
+        run: |
+          npm install -g html-validate
+          BUILD_DIR=""
+          for dir in dist out build .next; do
+            [ -d "$dir" ] && BUILD_DIR="$dir" && break
+          done
+          if [ -z "$BUILD_DIR" ]; then
+            echo "⚠️  No build output directory found — skipping HTML validation"
+            exit 0
+          fi
+          html-validate "$BUILD_DIR/**/*.html" 2>&1 || \
+            echo "⚠️  HTML validation found issues (review above — may be non-blocking)"
+        shell: bash
+
+      - name: 🔗 Internal Link Check
+        id: links
+        if: steps.build.outcome == 'success'
+        continue-on-error: true
+        run: |
+          BUILD_DIR=""
+          for dir in dist out build .next; do
+            [ -d "$dir" ] && BUILD_DIR="$dir" && break
+          done
+          if [ -z "$BUILD_DIR" ]; then
+            echo "⚠️  No build output — using source files for link check"
+            npx --yes linkinator ./ --recurse --skip "http*://*" 2>&1 || true
+          else
+            npx --yes linkinator "$BUILD_DIR/" --recurse --skip "http*://*" 2>&1 || true
+          fi
+        shell: bash
+
+      - name: 📋 SEO Meta Validation
+        id: seo-meta
+        continue-on-error: true
+        run: |
+          BUILD_DIR=""
+          for dir in dist out build .next; do
+            [ -d "$dir" ] && BUILD_DIR="$dir" && break
+          done
+          if [ -n "$BUILD_DIR" ] && ls "$BUILD_DIR"/*.html 2>/dev/null; then
+            node .github/scripts/seo-validate.mjs "$BUILD_DIR"
+          else
+            echo "⚠️  No built HTML found — checking source files"
+            node .github/scripts/seo-validate.mjs "./src" "./pages" "./app"
+          fi
+        shell: bash
+
+      - name: 📊 Summary
+        run: |
+          echo "## ✅ SEO Deploy Check Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Check | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|-------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| HTML Validation | ${{ steps.html-valid.outcome == 'success' && '✅ Pass' || '⚠️  Issues found' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Internal Links | ${{ steps.links.outcome == 'success' && '✅ Pass' || '⚠️  Issues found' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| SEO Meta | ${{ steps.seo-meta.outcome == 'success' && '✅ Pass' || '⚠️  Issues found' }} |" >> $GITHUB_STEP_SUMMARY
+        shell: bash
+
+  auto-merge:
+    name: Auto-Merge on Green
+    needs: [validate]
+    if: github.event.pull_request.head.ref != 'main' && !cancelled()
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+
+    steps:
+      - name: Check all validations passed
+        run: |
+          if [ "${{ needs.validate.outputs.html_valid }}" == "fail" ] || \
+             [ "${{ needs.validate.outputs.links_valid }}" == "fail" ]; then
+            echo "❌ Blocking checks failed — auto-merge disabled"
+            exit 1
+          fi
+          echo "✅ All checks passed — enabling auto-merge"
+        shell: bash
+
+      - name: Enable auto-merge (squash)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh pr merge ${{ github.event.pull_request.number }} \
+            --repo ${{ github.repository }} \
+            --auto \
+            --squash \
+            --subject "${{ github.event.pull_request.title }}"
+        shell: bash

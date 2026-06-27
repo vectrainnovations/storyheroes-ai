@@ -4,10 +4,14 @@ import { createClient } from '@supabase/supabase-js';
 import { createOrUpdateGHLContact } from '@/lib/ghl/client';
 import { squareClient } from '@/lib/square/client';
 
-const supabase = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-  );
+function getSupabase() {
+    const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    if (!url || !key) {
+      throw new Error("supabaseUrl is required");
+    }
+    return createClient(url, key);
+  }
 
 function verifySignature(body: string, signature: string): boolean {
     const webhookSecret = process.env.SQUARE_WEBHOOK_SECRET!;
@@ -45,6 +49,7 @@ export async function POST(request: NextRequest) {
             const lineItem = order?.lineItems?.[0];
               const episodeNumber = lineItem?.name?.includes('Episode 1') ? '1' : '1';
 
+            const supabase = getSupabase();
             const { data: orderData, error: orderError } = await supabase
                 .from('orders')
                 .insert({
